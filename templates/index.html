@@ -1,0 +1,256 @@
+{% load static %}
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Generator</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" integrity="sha384-Jc8q8q3iqJ61gNV9KGb8thSsNjpSL0n8PARn9HuZOnIxN0hoP+VmmDGMN5t9UJ0Z" crossorigin="anonymous">
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 10px;
+            background-image: url("{% static 'axe.jpg' %}");
+            background-size: cover;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+            background-position: top center;
+            min-height: 100vh;
+        }
+        h1 {
+            margin-bottom: 20px;
+        }
+        #description, #generatedCode {
+            width: 90%;
+            padding: 15px;
+            margin: 10px 0;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            background: rgba(255, 255, 255, 0.8);
+            resize: both;
+        }
+        .btn-custom {
+            padding: 10px 20px;
+            border: none;
+            background-color: #28a745;
+            color: white;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px 0;
+            width: 200px;
+        }
+        #uploadFileInput {
+            display: none; /* Hide the file input initially */
+        }
+        .button-column {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <h1 class="text-center text-white mb-5">Code Generator</h1>
+
+            <div class="form-group">
+                <textarea id="description" class="form-control" rows="5" placeholder="Enter code description..."></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="modelChoice" class="text-white">Select Model:</label>
+                <select id="modelChoice" class="form-control">
+                    <option value="model1">Model 1</option>
+                    <option value="model2">Model 2</option>
+                </select>
+            </div>
+
+            <div class="button-column">
+                <button id="generateButton" class="btn btn-custom" onclick="generateCode()">Generate Code</button>
+            </div>
+
+            <div class="form-group mt-3">
+                <textarea id="generatedCode" class="form-control" rows="10" placeholder="Generated code will appear here..." readonly></textarea>
+            </div>
+
+            <div class="button-column">
+                <button id="downloadButton" style="display:none;" class="btn btn-custom" onclick="downloadTxt()">Download Text</button>
+                <button id="downloadExcelButton" style="display:none;" class="btn btn-custom" onclick="downloadExcel()">Download Excel</button>
+                <button id="uploadFileButton" class="btn btn-custom">Upload .txt File</button>
+                <input type="file" id="uploadFileInput" accept=".txt" onchange="handleFileUpload(this.files)">
+                <button id="uploadExcelButton" class="btn btn-custom">Upload .xlsx File</button>
+                <input type="file" id="uploadExcelInput" accept=".xlsx" style="display: none;" onchange="handleExcelUpload(this.files)">
+
+            </div>
+        </div>
+    </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.0/xlsx.full.min.js"></script>
+
+<script>
+    let descriptionsList = [];
+    let generatedCodesList = [];
+
+    function generateCode() {
+        const descriptions = document.getElementById('description').value.split('\n').filter(line => line.trim() !== '');
+        const modelChoice = document.getElementById('modelChoice').value;
+        descriptionsList = descriptions;
+    
+        fetch('/generator/api/generate/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',  // Change content type to application/json
+            },
+            body: JSON.stringify({
+                'descriptions': descriptions,
+                'model_choice': modelChoice
+            })
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(data => {
+            document.getElementById('generatedCode').value = data.generated_codes.join('\n');
+            generatedCodesList = data.generated_codes;
+            document.getElementById('downloadButton').style.display = 'block';
+            document.getElementById('downloadExcelButton').style.display = 'block';
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error generating code. Please try again.');
+        });
+    }
+    document.getElementById('uploadExcelButton').addEventListener('click', function() {
+        document.getElementById('uploadExcelInput').click();
+    });
+
+    // Function to handle the file upload
+    document.getElementById('uploadExcelInput').addEventListener('change', function(event) {
+        const file = event.target.files[0];
+        if (file) {
+            handleExcelUpload(file);
+        }
+    });
+
+    function handleExcelUpload(file) {
+        const reader = new FileReader();
+        
+        reader.onload = function(event) {
+            const data = new Uint8Array(event.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+            const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+
+            // Find the column with 'Step Action'
+            const stepActionIndex = jsonData[0].indexOf('Step Action');
+            if (stepActionIndex === -1) {
+                alert("Step Action column not found in the Excel file");
+                return;
+            }
+
+            // Extract values from the 'Step Action' column
+            let descriptions = [];
+            for (let i = 1; i < jsonData.length; i++) {
+                if (jsonData[i][stepActionIndex]) {
+                    descriptions.push(jsonData[i][stepActionIndex].trim());
+                }
+            }
+
+            // Populate the description field with the extracted actions
+            document.getElementById('description').value = descriptions.join('\n');
+        };
+
+        reader.readAsArrayBuffer(file);
+    }
+    function downloadExcel() {
+        fetch('/generator/api/download_excel/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+                'descriptions': JSON.stringify(descriptionsList),
+                'generated_codes': JSON.stringify(generatedCodesList)
+            })
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.blob();
+        })
+        .then(blob => {
+            const url = window.URL.createObjectURL(new Blob([blob]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', 'generated_codes.xlsx');
+            document.body.appendChild(link);
+            link.click();
+            link.parentNode.removeChild(link);
+            window.URL.revokeObjectURL(url);
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error downloading Excel file. Please try again.');
+        });
+    }
+
+    function downloadTxt() {
+        fetch('/generator/api/download_txt/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: new URLSearchParams({
+                'descriptions': JSON.stringify(descriptionsList),
+                'generated_codes': JSON.stringify(generatedCodesList)
+            })
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.blob();
+        })
+        .then(blob => {
+            const url = window.URL.createObjectURL(new Blob([blob]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', 'generated_codes.txt');
+            document.body.appendChild(link);
+            link.click();
+            link.parentNode.removeChild(link);
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Error downloading text file. Please try again.');
+        });
+    }
+
+    function handleFileUpload(files) {
+        const file = files[0];
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            const contents = event.target.result;
+            document.getElementById('description').value = contents;
+        };
+        reader.readAsText(file);
+    }
+
+    // Show file input when upload button is clicked
+    document.getElementById('uploadFileButton').addEventListener('click', function() {
+        document.getElementById('uploadFileInput').click();
+    });
+</script>
+</body>
+</html>
