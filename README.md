@@ -1,1 +1,1 @@
-This an Assitance chatbot designed to help people with zero knowledge on coding to create robust and good Java(Groovy) code to run any automatic test 
+This is an Assitance chatbot designed to help people with zero knowledge on coding to create robust and good Java(Groovy) code to run any automatic test 
